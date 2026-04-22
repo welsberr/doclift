@@ -14,6 +14,12 @@ The initial target is legacy Word `.doc` files, but the repository boundary is i
 
 `doclift` is not a learner-facing system. It is a source-normalization layer that other projects can consume.
 
+Project planning and lifecycle notes live in:
+
+- `docs/architecture.md`
+- `docs/bundle-format.md`
+- `docs/roadmap.md`
+
 Current implementation:
 
 - legacy Word `.doc` conversion through `catdoc`
@@ -82,3 +88,7 @@ out/
 - `Didactopus` should consume `doclift` bundles rather than own legacy format handling.
 - `GroundRecall` can use the same bundles for provenance-aware import.
 - other archival or scholarly tooling can reuse the same normalization path without depending on Didactopus.
+
+## License
+
+`doclift` is licensed under the MIT license. See `LICENSE`.

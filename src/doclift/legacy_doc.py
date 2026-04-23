@@ -221,6 +221,28 @@ def collect_figure_assets(root: Path) -> list[FigureAsset]:
     return assets
 
 
+def link_related_assets(figure_refs: list[str], figure_assets: list[FigureAsset]) -> list[FigureAsset]:
+    if not figure_refs:
+        return []
+
+    matched: list[FigureAsset] = []
+    seen: set[str] = set()
+    ref_keys: set[str] = set()
+    for ref in figure_refs:
+        key = slugify(ref.replace("Figure", "Fig").replace("figure", "fig"))
+        ref_keys.add(key)
+
+    for asset in figure_assets:
+        asset_key = slugify(asset.name.rsplit(".", 1)[0])
+        for ref_key in ref_keys:
+            if ref_key and ref_key in asset_key:
+                if asset.asset_id not in seen:
+                    seen.add(asset.asset_id)
+                    matched.append(asset)
+                break
+    return matched
+
+
 def build_layout_manifest(layout_body: str) -> list[dict]:
     manifest: list[dict] = []
     for line_no, line in enumerate(layout_body.splitlines(), start=1):

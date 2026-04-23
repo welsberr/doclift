@@ -9,6 +9,7 @@ from .legacy_doc import (
     extract_references,
     extract_tables,
     extract_title,
+    link_related_assets,
     normalize_text_preserve_layout,
     render_markdown,
     run_catdoc,
@@ -32,7 +33,7 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
     layout = build_layout_manifest(layout_body)
     table_refs = extract_references(body, r"\bTable\s+\d+\b")
     figure_refs = extract_references(body, r"\b(?:Fig\.?\s*[\d.]+|Figure\s+[\d.]+)\b")
-    related_assets = list(figure_assets or [])
+    related_assets = link_related_assets(figure_refs, list(figure_assets or []))
 
     doc_out = _document_output_dir(out_root, source_path, title)
     doc_out.mkdir(parents=True, exist_ok=True)
@@ -93,6 +94,15 @@ def convert_directory(source_root: Path, out_root: Path, asset_root: Path | None
             "summary": {
                 "documents_with_tables": sum(1 for bundle in bundles if bundle.table_count > 0),
                 "documents_with_figure_references": sum(1 for bundle in bundles if bundle.figure_reference_count > 0),
+                "documents": [
+                    {
+                        "document_id": bundle.document_id,
+                        "title": bundle.title,
+                        "table_count": bundle.table_count,
+                        "figure_reference_count": bundle.figure_reference_count,
+                    }
+                    for bundle in bundles
+                ],
             }
         },
     )

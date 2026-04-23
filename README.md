@@ -67,6 +67,23 @@ Convert a directory tree and inventory external figure assets:
 doclift convert-dir /path/to/source-tree /tmp/doclift-bundle --asset-root /path/to/source-tree
 ```
 
+## Downstream Workflow
+
+`doclift` is meant to hand off a normalized bundle to downstream systems rather
+than to own review, pedagogy, or canonical knowledge storage.
+
+Minimal end-to-end flow:
+
+```bash
+doclift convert-dir /path/to/legacy-course /tmp/doclift-bundle --asset-root /path/to/legacy-course
+didactopus doclift-bundle /tmp/doclift-bundle /tmp/didactopus-pack --course-title "Example Course"
+groundrecall import /tmp/doclift-bundle --mode quick
+```
+
+Use the Didactopus step when you want a learner-facing pack and review workflow.
+Use the GroundRecall step when you want to import the normalized source bundle
+directly into a canonical knowledge store.
+
 ## Bundle Layout
 
 ```text

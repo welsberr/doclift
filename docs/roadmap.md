@@ -3,7 +3,6 @@
 ## Near Term
 
 - stabilize the normalized bundle schema for downstream adapters
-- add a `doclift` bundle consumer path in Didactopus
 - extend test coverage around table parsing, title repair, and layout manifests
 - add fixture-based regression tests from representative legacy corpora
 - improve CLI output for batch conversion summaries
@@ -30,6 +29,11 @@
 
 ## Integration
 
-- define a Didactopus source adapter for `doclift` bundles
-- define a GroundRecall importer for `doclift` manifests and sidecars
+- document and harden the `doclift -> Didactopus -> GroundRecall` handoff path
 - document provenance mapping from `doclift` artifacts into downstream stores
+
+## Recently Completed
+
+- added a Didactopus source adapter for `doclift` bundles
+- added a Didactopus CLI path for `doclift` bundle to draft-pack generation
+- added a GroundRecall importer for `doclift` manifests and sidecars

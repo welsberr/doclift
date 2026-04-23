@@ -24,7 +24,11 @@ def _document_output_dir(out_root: Path, source_path: Path, title: str) -> Path:
     return out_root / "documents" / f"{slugify(source_path.stem)}-{slugify(title)}"
 
 
-def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
+def _relative_to_root(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
     raw = run_catdoc(source_path)
     cleaned = clean_text(raw)
     title = extract_title(cleaned, source_path.stem)
@@ -49,7 +53,8 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
     write_json(
         tables_path,
         {
-            "source_path": str(source_path),
+            "source_path": _relative_to_root(source_path, source_root),
+            "source_path_kind": "source_root_relative",
             "table_references": table_refs,
             "tables": [table.model_dump() for table in tables],
         },
@@ -57,7 +62,8 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
     write_json(
         figures_path,
         {
-            "source_path": str(source_path),
+            "source_path": _relative_to_root(source_path, source_root),
+            "source_path_kind": "source_root_relative",
             "figure_references": figure_refs,
             "related_assets": [asset.model_dump() for asset in related_assets],
         },
@@ -67,12 +73,14 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
         document_id=slugify(title),
         title=title,
         document_kind=document_kind,
-        source_path=str(source_path),
-        output_dir=str(doc_out),
-        markdown_path=str(markdown_path),
-        layout_path=str(layout_path),
-        tables_path=str(tables_path),
-        figures_path=str(figures_path),
+        source_path=_relative_to_root(source_path, source_root),
+        source_path_kind="source_root_relative",
+        output_dir=_relative_to_root(doc_out, out_root),
+        markdown_path=_relative_to_root(markdown_path, out_root),
+        layout_path=_relative_to_root(layout_path, out_root),
+        tables_path=_relative_to_root(tables_path, out_root),
+        figures_path=_relative_to_root(figures_path, out_root),
+        bundle_path_kind="bundle_root_relative",
         table_count=len(tables),
         figure_reference_count=len(figure_refs),
     )
@@ -81,9 +89,10 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
 def convert_directory(source_root: Path, out_root: Path, asset_root: Path | None = None) -> ConversionReport:
     docs = sorted(path for path in source_root.rglob("*") if path.is_file() and path.suffix.lower() == ".doc")
     figure_assets = collect_figure_assets(asset_root) if asset_root is not None else []
-    bundles = [convert_doc(path, out_root, figure_assets=figure_assets) for path in docs]
+    bundles = [convert_doc(path, source_root, out_root, figure_assets=figure_assets) for path in docs]
     report = ConversionReport(
-        source_root=str(source_root),
+        source_root=source_root.name,
+        source_root_kind="source_label",
         converter="catdoc_doc",
         document_count=len(bundles),
         documents=bundles,

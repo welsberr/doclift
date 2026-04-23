@@ -268,7 +268,7 @@ def collect_figure_assets(root: Path) -> list[FigureAsset]:
         assets.append(
             FigureAsset(
                 asset_id=slugify(relative),
-                path=str(path),
+                path=relative,
                 relative_path=relative,
                 name=path.name,
                 container=path.parent.name,

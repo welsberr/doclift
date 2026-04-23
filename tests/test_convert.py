@@ -42,7 +42,13 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     )
 
     assert manifest["document_count"] == 1
+    assert manifest["source_root"] == "src"
+    assert manifest["documents"][0]["source_path"] == "sample.doc"
+    assert manifest["documents"][0]["markdown_path"] == "documents/sample-lecture-1-example-legacy-document/document.md"
     assert conversion_report["summary"]["documents_with_tables"] == 1
     assert conversion_report["summary"]["documents_with_figure_references"] == 1
+    assert figures_payload["source_path"] == "sample.doc"
+    assert figures_payload["source_path_kind"] == "source_root_relative"
     assert figures_payload["figure_references"] == ["Fig. 5.1"]
     assert len(figures_payload["related_assets"]) == 1
+    assert figures_payload["related_assets"][0]["path"] == "Fig. 5.1.bmp"

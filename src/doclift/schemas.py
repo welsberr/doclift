@@ -36,17 +36,20 @@ class DocumentBundle(BaseModel):
     title: str
     document_kind: str = "document"
     source_path: str
+    source_path_kind: str = "source_root_relative"
     output_dir: str
     markdown_path: str
     layout_path: str
     tables_path: str
     figures_path: str
+    bundle_path_kind: str = "bundle_root_relative"
     table_count: int = 0
     figure_reference_count: int = 0
 
 
 class ConversionReport(BaseModel):
     source_root: str
+    source_root_kind: str = "source_label"
     converter: str
     document_count: int = 0
     documents: list[DocumentBundle] = Field(default_factory=list)

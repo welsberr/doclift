@@ -1,4 +1,13 @@
-from doclift.legacy_doc import FigureAsset, extract_references, extract_tables, link_related_assets
+from pathlib import Path
+
+from doclift.legacy_doc import (
+    FigureAsset,
+    classify_document,
+    extract_references,
+    extract_tables,
+    extract_title,
+    link_related_assets,
+)
 
 
 def test_extract_references_dedupes() -> None:
@@ -45,3 +54,35 @@ def test_link_related_assets_matches_explicit_figure_refs() -> None:
     ]
     matched = link_related_assets(["Fig. 5.1"], assets)
     assert [asset.asset_id for asset in matched] == ["a1"]
+
+
+def test_extract_title_prefers_exam_headers() -> None:
+    text = "\n".join(
+        [
+            "EXAM I",
+            "February 25, 1999",
+            "Answer three of the following essay questions.",
+        ]
+    )
+    assert extract_title(text, "fallback") == "EXAM I"
+
+
+def test_extract_title_handles_cover_sheet() -> None:
+    text = "\n".join(
+        [
+            "MARB 401",
+            "PHYSIOLOGICAL ECOLOGY",
+            "OF",
+            "MARINE MAMMALS",
+            "CLASS NOTES",
+            "SPRING 2000",
+        ]
+    )
+    assert extract_title(text, "fallback") == "PHYSIOLOGICAL ECOLOGY OF MARINE MAMMALS"
+
+
+def test_classify_document_kinds() -> None:
+    assert classify_document("EXAM II\nApril 6, 1999\n", Path("Exam II-99.doc")) == "exam"
+    assert classify_document("FINAL EXAM SPRING 1999\nAnswer 3 questions\n", Path("final exam.991.doc")) == "final_exam"
+    assert classify_document("MARB 401\nPHYSIOLOGICAL ECOLOGY\nOF\nMARINE MAMMALS\nCLASS NOTES\n", Path("COVER.doc")) == "cover_notes"
+    assert classify_document("SPRING 2000\nMARB 401\nPhysiological Ecology of Marine Mammals\n", Path("Syllabus 401.001.doc")) == "syllabus"

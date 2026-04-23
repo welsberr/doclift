@@ -34,6 +34,7 @@ class FigureAsset(BaseModel):
 class DocumentBundle(BaseModel):
     document_id: str
     title: str
+    document_kind: str = "document"
     source_path: str
     output_dir: str
     markdown_path: str

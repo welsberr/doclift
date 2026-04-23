@@ -55,6 +55,42 @@ def normalize_text_preserve_layout(text: str) -> str:
 
 def extract_title(text: str, fallback: str) -> str:
     lines = text.splitlines()
+    nonempty = [line.strip() for line in lines if line.strip()]
+    if not nonempty:
+        return fallback
+
+    joined = " ".join(nonempty[:8])
+    upper_joined = joined.upper()
+    first = nonempty[0]
+
+    if first.upper().startswith("MAKE-UP EXAM"):
+        return first
+    if first.upper() in {"EXAM I", "EXAM II"}:
+        return first
+    if "FINAL EXAM" in upper_joined:
+        for line in nonempty[:8]:
+            if "FINAL EXAM" in line.upper():
+                return line
+    if "CLASS NOTES" in upper_joined:
+        title_parts: list[str] = []
+        started = False
+        for line in nonempty[:6]:
+            upper = line.upper()
+            if upper.startswith("MARB "):
+                continue
+            if upper == "CLASS NOTES":
+                break
+            if upper in {"SPRING 2000", "SPRING 1999", "SPRING 2001"}:
+                continue
+            started = True
+            title_parts.append(line)
+        if started:
+            return " ".join(title_parts)
+    if first.upper().startswith("MARB ") and len(nonempty) > 1:
+        second = nonempty[1]
+        if re.match(r"^\d+\s+Credit\b", second, re.IGNORECASE):
+            return first
+
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
@@ -71,18 +107,39 @@ def extract_title(text: str, fallback: str) -> str:
             return stripped
         if stripped.upper() in {
             "SPRING 2000",
+            "SPRING 1999",
             "MARB 401",
             "MARB 482 SEMINAR IN MARINE BIOLOGY",
             "COURSE SYLLABUS",
             "EXAM I",
             "EXAM II",
             "FINAL EXAM SPRING 1999",
+            "CLASS NOTES",
+            "OF",
         }:
             continue
         if stripped.startswith(("February ", "April ")):
             continue
         return stripped
     return fallback
+
+
+def classify_document(text: str, source_path: Path) -> str:
+    nonempty = [line.strip() for line in text.splitlines() if line.strip()]
+    joined = " ".join(nonempty[:10]).upper()
+    name = source_path.name.upper()
+
+    if name.startswith("SYLLABUS") or "COURSE SYLLABUS" in joined:
+        return "syllabus"
+    if "FINAL EXAM" in joined:
+        return "final_exam"
+    if name.startswith("EXAM") or name.startswith("MAKE-UP") or re.match(r"^EXAM\b", joined):
+        return "exam"
+    if "CLASS NOTES" in joined or name == "COVER.DOC":
+        return "cover_notes"
+    if re.match(r"^LECTURE\s+\d+\.", joined):
+        return "lecture"
+    return "document"
 
 
 def strip_title(text: str, title: str) -> str:

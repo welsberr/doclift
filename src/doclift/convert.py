@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .legacy_doc import (
     build_layout_manifest,
+    classify_document,
     clean_text,
     collect_figure_assets,
     extract_references,
@@ -27,6 +28,7 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
     raw = run_catdoc(source_path)
     cleaned = clean_text(raw)
     title = extract_title(cleaned, source_path.stem)
+    document_kind = classify_document(cleaned, source_path)
     body = strip_title(cleaned, title)
     layout_body = normalize_text_preserve_layout(strip_title(raw, title))
     tables = extract_tables(layout_body)
@@ -64,6 +66,7 @@ def convert_doc(source_path: Path, out_root: Path, figure_assets: list | None = 
     return DocumentBundle(
         document_id=slugify(title),
         title=title,
+        document_kind=document_kind,
         source_path=str(source_path),
         output_dir=str(doc_out),
         markdown_path=str(markdown_path),
@@ -98,6 +101,7 @@ def convert_directory(source_root: Path, out_root: Path, asset_root: Path | None
                     {
                         "document_id": bundle.document_id,
                         "title": bundle.title,
+                        "document_kind": bundle.document_kind,
                         "table_count": bundle.table_count,
                         "figure_reference_count": bundle.figure_reference_count,
                     }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from .legacy_doc import (
     build_layout_manifest,
@@ -16,7 +17,7 @@ from .legacy_doc import (
     run_catdoc,
     strip_title,
 )
-from .schemas import ConversionReport, DocumentBundle
+from .schemas import ConversionReport, DocumentBundle, DocumentChunk
 from .utils import slugify, write_json
 
 
@@ -26,6 +27,94 @@ def _document_output_dir(out_root: Path, source_path: Path, title: str) -> Path:
 
 def _relative_to_root(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
+
+
+def _build_document_chunks(title: str, body: str, layout_body: str, tables: list) -> list[DocumentChunk]:
+    paragraphs = _extract_paragraphs(_body_for_chunking(body, tables))
+    layout_lines = layout_body.splitlines()
+    layout_cursor = 0
+    chunks: list[DocumentChunk] = []
+
+    for index, paragraph in enumerate(paragraphs, start=1):
+        role = _classify_chunk_role(paragraph)
+        line_start, line_end, layout_cursor = _locate_chunk_span(paragraph, layout_lines, layout_cursor)
+        chunks.append(
+            DocumentChunk(
+                chunk_id=f"{slugify(title)}-c{index}",
+                role=role,
+                section=title,
+                line_start=line_start,
+                line_end=line_end,
+                text=paragraph,
+                confidence_hint=0.8 if role == "claim" else 0.75,
+            )
+        )
+    return chunks
+
+
+def _extract_paragraphs(body: str) -> list[str]:
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                paragraphs.append(" ".join(current).strip())
+                current = []
+            continue
+        current.append(stripped)
+    if current:
+        paragraphs.append(" ".join(current).strip())
+    return paragraphs
+
+
+def _body_for_chunking(body: str, tables: list) -> str:
+    excluded = {
+        line.strip()
+        for table in tables
+        for line in [table.caption, *table.raw_lines]
+        if line.strip()
+    }
+    kept_lines: list[str] = []
+    for line in body.splitlines():
+        if line.strip() in excluded:
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines)
+
+
+def _classify_chunk_role(paragraph: str) -> str:
+    if paragraph.startswith(("- ", "* ")):
+        return "claim"
+    if re.match(r"^(objective|claim|finding|result|conclusion):", paragraph, re.IGNORECASE):
+        return "claim"
+    return "summary"
+
+
+def _locate_chunk_span(paragraph: str, layout_lines: list[str], start_index: int) -> tuple[int, int, int]:
+    paragraph_lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+    if not paragraph_lines:
+        paragraph_lines = [paragraph.strip()]
+
+    normalized_layout = [line.strip() for line in layout_lines]
+    tokens = " ".join(part for part in paragraph_lines if part).split()
+    token_count = len(tokens)
+    if token_count == 0:
+        return 0, 0, start_index
+
+    for offset in range(start_index, len(normalized_layout)):
+        if not normalized_layout[offset]:
+            continue
+        collected: list[str] = []
+        end_offset = offset
+        while end_offset < len(normalized_layout) and len(" ".join(collected).split()) < token_count:
+            candidate = normalized_layout[end_offset]
+            if candidate:
+                collected.append(candidate)
+            end_offset += 1
+        if " ".join(collected).split() == tokens:
+            return offset + 1, end_offset, end_offset
+    return 0, 0, start_index
 
 
 def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
@@ -47,6 +136,8 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
     layout_path = doc_out / "document.layout.json"
     tables_path = doc_out / "document.tables.json"
     figures_path = doc_out / "document.figures.json"
+    chunks_path = doc_out / "document.chunks.json"
+    chunks = _build_document_chunks(title, body, layout_body, tables)
 
     markdown_path.write_text(render_markdown(title, body, tables, figure_refs, related_assets), encoding="utf-8")
     write_json(layout_path, layout)
@@ -68,6 +159,7 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
             "related_assets": [asset.model_dump() for asset in related_assets],
         },
     )
+    write_json(chunks_path, {"chunks": [chunk.model_dump() for chunk in chunks]})
 
     return DocumentBundle(
         document_id=slugify(title),
@@ -80,9 +172,11 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
         layout_path=_relative_to_root(layout_path, out_root),
         tables_path=_relative_to_root(tables_path, out_root),
         figures_path=_relative_to_root(figures_path, out_root),
+        chunks_path=_relative_to_root(chunks_path, out_root),
         bundle_path_kind="bundle_root_relative",
         table_count=len(tables),
         figure_reference_count=len(figure_refs),
+        chunk_count=len(chunks),
     )
 
 

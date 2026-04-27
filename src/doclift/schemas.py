@@ -31,6 +31,16 @@ class FigureAsset(BaseModel):
     looks_like_figure: bool = False
 
 
+class DocumentChunk(BaseModel):
+    chunk_id: str
+    role: str = "summary"
+    section: str = ""
+    line_start: int = 0
+    line_end: int = 0
+    text: str
+    confidence_hint: float = 0.75
+
+
 class DocumentBundle(BaseModel):
     document_id: str
     title: str
@@ -42,9 +52,11 @@ class DocumentBundle(BaseModel):
     layout_path: str
     tables_path: str
     figures_path: str
+    chunks_path: str
     bundle_path_kind: str = "bundle_root_relative"
     table_count: int = 0
     figure_reference_count: int = 0
+    chunk_count: int = 0
 
 
 class ConversionReport(BaseModel):

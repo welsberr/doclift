@@ -40,11 +40,18 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
             encoding="utf-8"
         )
     )
+    chunks_payload = json.loads(
+        (out_root / "documents" / "sample-lecture-1-example-legacy-document" / "document.chunks.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert manifest["document_count"] == 1
     assert manifest["source_root"] == "src"
     assert manifest["documents"][0]["source_path"] == "sample.doc"
     assert manifest["documents"][0]["markdown_path"] == "documents/sample-lecture-1-example-legacy-document/document.md"
+    assert manifest["documents"][0]["chunks_path"] == "documents/sample-lecture-1-example-legacy-document/document.chunks.json"
+    assert manifest["documents"][0]["chunk_count"] == 1
     assert conversion_report["summary"]["documents_with_tables"] == 1
     assert conversion_report["summary"]["documents_with_figure_references"] == 1
     assert figures_payload["source_path"] == "sample.doc"
@@ -52,3 +59,8 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     assert figures_payload["figure_references"] == ["Fig. 5.1"]
     assert len(figures_payload["related_assets"]) == 1
     assert figures_payload["related_assets"][0]["path"] == "Fig. 5.1.bmp"
+    assert len(chunks_payload["chunks"]) == 1
+    assert chunks_payload["chunks"][0]["chunk_id"] == "lecture-1-example-legacy-document-c1"
+    assert chunks_payload["chunks"][0]["role"] == "summary"
+    assert chunks_payload["chunks"][0]["line_start"] >= 1
+    assert chunks_payload["chunks"][0]["text"] == "See Fig. 5.1 and Table 1."

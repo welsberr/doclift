@@ -22,9 +22,14 @@ Project planning and lifecycle notes live in:
 
 Current implementation:
 
-- legacy Word `.doc` conversion through `catdoc`
+- legacy Word `.doc` conversion through `catdoc`, with LibreOffice text
+  extraction fallback when quality flags indicate residue
+- WordPerfect `.wp`, `.wp5`, `.wp6`, and `.wpd` conversion through LibreOffice
+  writerperfect/libwpd text extraction
 - bundle emission with:
   - `document.md`
+  - `document.extracted.txt`
+  - `document.conversion.json`
   - `document.layout.json`
   - `document.tables.json`
   - `document.figures.json`
@@ -32,13 +37,8 @@ Current implementation:
   - `conversion_report.json`
 - course/workspace-level external figure asset inventory
 
-Planned follow-on formats:
-
-- WordPerfect
-- RTF
-- DOCX as a higher-fidelity path
-- old HTML
-- OCR-assisted scanned documents
+Planned follow-on formats include RTF, DOCX as a higher-fidelity path, old HTML,
+and OCR-assisted scanned documents.
 
 ## Install
 
@@ -59,6 +59,12 @@ Convert one document:
 
 ```bash
 doclift convert /path/to/legacy.doc /tmp/doclift-out
+```
+
+WordPerfect files use the same command when LibreOffice is installed:
+
+```bash
+doclift convert /path/to/archive.wpd /tmp/doclift-out
 ```
 
 Convert a directory tree and inventory external figure assets:
@@ -95,6 +101,8 @@ out/
   documents/
     some-doc/
       document.md
+      document.extracted.txt
+      document.conversion.json
       document.layout.json
       document.tables.json
       document.figures.json

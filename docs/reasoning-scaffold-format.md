@@ -13,6 +13,11 @@ A reasoning scaffold is not raw hidden chain-of-thought. It is a compact, public
 - source slots or reviewed citations
 - tool-specific prompt seeds when useful
 
+Downstream tools are expected to use this shape operationally. In particular,
+Didactopus should be able to use reviewed scaffold fields to drive learner
+questions, evidence checks, misconception handling, and revision prompts.
+That makes field preservation part of the contract, not a cosmetic detail.
+
 ## Extraction Target
 
 When extracting from a document, prefer records with this shape:

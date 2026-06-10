@@ -11,7 +11,9 @@
 
 - add a higher-fidelity `.docx` path
 - add RTF support
-- add WordPerfect discovery and conversion plugins
+- harden WordPerfect conversion with fixture-based regression tests and optional
+  alternate extractors such as `wp2latex`
+- expand quality-gated fallback conversion beyond the current `.doc` text path
 - add optional OCR-assisted pipelines for scanned legacy material
 
 ## Structural Recovery
@@ -34,6 +36,8 @@
 
 ## Recently Completed
 
+- added WordPerfect `.wp`, `.wp5`, `.wp6`, and `.wpd` conversion through
+  LibreOffice writerperfect/libwpd with conversion sidecars
 - added a Didactopus source adapter for `doclift` bundles
 - added a Didactopus CLI path for `doclift` bundle to draft-pack generation
 - added a GroundRecall importer for `doclift` manifests and sidecars

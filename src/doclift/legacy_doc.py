@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import hashlib
+import os
 import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .schemas import FigureAsset, TableArtifact
@@ -15,6 +20,83 @@ def run_catdoc(path: Path) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"catdoc failed for {path}: {result.stderr.strip()}")
     return result.stdout.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _tool_output(command: list[str]) -> str:
+    if shutil.which(command[0]) is None:
+        return ""
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    return (result.stdout or result.stderr).strip()
+
+
+def run_soffice_doc(path: Path) -> tuple[str, dict[str, object]]:
+    soffice_path = shutil.which("soffice")
+    if soffice_path is None:
+        raise RuntimeError("LibreOffice soffice is required for .doc fallback conversion")
+
+    imported_at = datetime.now(timezone.utc).isoformat()
+    with tempfile.TemporaryDirectory(prefix="doclift-doc-") as tmpdir_name:
+        tmpdir = Path(tmpdir_name)
+        profile_dir = tmpdir / "lo-profile"
+        config_dir = tmpdir / "xdg-config"
+        cache_dir = tmpdir / "xdg-cache"
+        profile_dir.mkdir()
+        config_dir.mkdir()
+        cache_dir.mkdir()
+        command = [
+            soffice_path,
+            "--headless",
+            f"-env:UserInstallation=file://{profile_dir.as_posix()}",
+            "--convert-to",
+            "txt",
+            "--outdir",
+            tmpdir.as_posix(),
+            path.as_posix(),
+        ]
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": tmpdir.as_posix(),
+                "XDG_CONFIG_HOME": config_dir.as_posix(),
+                "XDG_CACHE_HOME": cache_dir.as_posix(),
+                "XDG_RUNTIME_DIR": tmpdir.as_posix(),
+            }
+        )
+        result = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
+        txt_path = tmpdir / path.with_suffix(".txt").name
+        if not txt_path.exists():
+            candidates = sorted(tmpdir.glob("*.txt"))
+            if candidates:
+                txt_path = candidates[0]
+
+        text_exists = txt_path.exists()
+        generated_hash = sha256_file(txt_path) if text_exists else ""
+        raw_text = txt_path.read_text(encoding="utf-8-sig", errors="replace") if text_exists else ""
+
+    provenance = {
+        "converter": "soffice_doc_txt",
+        "source_path": path.as_posix(),
+        "source_size_bytes": path.stat().st_size,
+        "source_sha256": sha256_file(path),
+        "imported_at": imported_at,
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+        "soffice_version": _tool_output([soffice_path, "--version"]),
+        "generated_text_sha256": generated_hash,
+    }
+    if result.returncode != 0 or not raw_text.strip():
+        raise RuntimeError(f"LibreOffice .doc conversion failed for {path}: {provenance}")
+    return raw_text.replace("\r\n", "\n").replace("\r", "\n"), provenance
 
 
 def clean_text(text: str) -> str:
@@ -33,6 +115,34 @@ def clean_text(text: str) -> str:
             continue
         cleaned.append(stripped)
     return "\n".join(cleaned).strip()
+
+
+def text_quality_flags(raw_text: str, cleaned_text: str | None = None, title: str | None = None) -> list[str]:
+    flags: list[str] = []
+    cleaned = cleaned_text if cleaned_text is not None else clean_text(raw_text)
+    stripped = cleaned.strip()
+    if len(stripped) < 80:
+        flags.append("suspiciously_short_text")
+    if "\ufffd" in raw_text:
+        flags.append("replacement_characters")
+
+    nonspace = [char for char in raw_text if not char.isspace()]
+    if nonspace:
+        printable = sum(1 for char in nonspace if char.isprintable())
+        if printable / len(nonspace) < 0.92:
+            flags.append("low_printable_character_ratio")
+        control = sum(1 for char in nonspace if ord(char) < 32 or 127 <= ord(char) < 160)
+        if control / len(nonspace) >= 0.01:
+            flags.append("control_character_residue")
+
+    title_value = title or extract_title(cleaned, "")
+    title_chars = [char for char in title_value if not char.isspace()]
+    if title_chars:
+        title_printable = sum(1 for char in title_chars if char.isprintable())
+        title_alnum = sum(1 for char in title_chars if char.isalnum())
+        if title_printable / len(title_chars) < 0.92 or title_alnum / len(title_chars) < 0.45:
+            flags.append("suspicious_title")
+    return sorted(set(flags))
 
 
 def normalize_text_preserve_layout(text: str) -> str:

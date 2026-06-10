@@ -51,7 +51,14 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     assert manifest["documents"][0]["source_path"] == "sample.doc"
     assert manifest["documents"][0]["markdown_path"] == "documents/sample-lecture-1-example-legacy-document/document.md"
     assert manifest["documents"][0]["chunks_path"] == "documents/sample-lecture-1-example-legacy-document/document.chunks.json"
+    assert manifest["documents"][0]["conversion_path"] == "documents/sample-lecture-1-example-legacy-document/document.conversion.json"
     assert manifest["documents"][0]["chunk_count"] == 1
+    conversion_payload = json.loads(
+        (out_root / "documents" / "sample-lecture-1-example-legacy-document" / "document.conversion.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert conversion_payload["quality_flags"] == []
     assert conversion_report["summary"]["documents_with_tables"] == 1
     assert conversion_report["summary"]["documents_with_figure_references"] == 1
     assert figures_payload["source_path"] == "sample.doc"
@@ -64,3 +71,78 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     assert chunks_payload["chunks"][0]["role"] == "summary"
     assert chunks_payload["chunks"][0]["line_start"] >= 1
     assert chunks_payload["chunks"][0]["text"] == "See Fig. 5.1 and Table 1."
+
+
+def test_convert_directory_handles_wordperfect_with_conversion_provenance(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "src"
+    out_root = tmp_path / "out"
+    source_root.mkdir()
+    (source_root / "notes.wpd").write_bytes(b"wpd")
+
+    sample_text = "\n".join(
+        [
+            "WordPerfect Archive Notes",
+            "",
+            "These extracted notes should become normalized Markdown.",
+        ]
+    )
+    sample_provenance = {
+        "converter": "soffice_wordperfect_txt",
+        "source_sha256": "abc123",
+        "file_identification": "WordPerfect document, v5.1",
+        "quality_flags": [],
+    }
+
+    monkeypatch.setattr(convert_module, "run_soffice_wordperfect", lambda path: (sample_text, sample_provenance))
+
+    report = convert_module.convert_directory(source_root, out_root)
+
+    assert report.document_count == 1
+    manifest = json.loads((out_root / "manifest.json").read_text(encoding="utf-8"))
+    conversion_payload = json.loads(
+        (out_root / "documents" / "notes-wordperfect-archive-notes" / "document.conversion.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    extracted_text = (
+        out_root / "documents" / "notes-wordperfect-archive-notes" / "document.extracted.txt"
+    ).read_text(encoding="utf-8")
+
+    assert manifest["documents"][0]["source_path"] == "notes.wpd"
+    assert manifest["documents"][0]["conversion_path"] == "documents/notes-wordperfect-archive-notes/document.conversion.json"
+    assert conversion_payload["converter"] == "soffice_wordperfect_txt"
+    assert conversion_payload["provenance"]["file_identification"] == "WordPerfect document, v5.1"
+    assert extracted_text == sample_text
+
+
+def test_convert_doc_uses_soffice_fallback_for_dirty_catdoc_output(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "src"
+    out_root = tmp_path / "out"
+    source_root.mkdir()
+    (source_root / "dirty.doc").write_text("stub", encoding="utf-8")
+
+    dirty_text = "\x01\x02\x03þ7#$\x19\x01.Ó>\nReal Title\n" + ("normal words " * 20)
+    clean_text = "Real Title\n\nClean converted body text with enough words to avoid short-text flags."
+    monkeypatch.setattr(convert_module, "run_catdoc", lambda path: dirty_text)
+    monkeypatch.setattr(
+        convert_module,
+        "run_soffice_doc",
+        lambda path: (
+            clean_text,
+            {
+                "converter": "soffice_doc_txt",
+                "quality_flags": [],
+            },
+        ),
+    )
+
+    report = convert_module.convert_directory(source_root, out_root)
+    assert report.document_count == 1
+    conversion_payload = json.loads(
+        (out_root / "documents" / "dirty-real-title" / "document.conversion.json").read_text(encoding="utf-8")
+    )
+    extracted_text = (out_root / "documents" / "dirty-real-title" / "document.extracted.txt").read_text(encoding="utf-8")
+
+    assert conversion_payload["converter"] == "soffice_doc_txt"
+    assert conversion_payload["provenance"]["fallback_from"] == "catdoc_doc"
+    assert extracted_text == clean_text

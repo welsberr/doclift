@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .convert import convert_directory, convert_doc
+from .convert import convert_directory, convert_supported_file
 from .inspect import inspect_path
 from .legacy_doc import collect_figure_assets
 
@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="Inspect a source file")
     inspect_parser.add_argument("source")
 
-    convert_parser = subparsers.add_parser("convert", help="Convert a single legacy Word .doc file")
+    convert_parser = subparsers.add_parser("convert", help="Convert a single supported legacy document")
     convert_parser.add_argument("source")
     convert_parser.add_argument("out")
     convert_parser.add_argument("--asset-root", default=None)
@@ -36,7 +36,8 @@ def main() -> None:
     if args.command == "convert":
         asset_root = Path(args.asset_root) if args.asset_root else None
         assets = collect_figure_assets(asset_root) if asset_root else []
-        bundle = convert_doc(Path(args.source), Path(args.out), figure_assets=assets)
+        source = Path(args.source)
+        bundle = convert_supported_file(source, source.parent, Path(args.out), figure_assets=assets)
         print(json.dumps(bundle.model_dump(), indent=2))
         return
     if args.command == "convert-dir":

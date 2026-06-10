@@ -28,9 +28,12 @@ The primary artifact is not a page-faithful rendering. It is a normalized bundle
 
 ## Initial format strategy
 
-- `.doc`: implemented through `catdoc`, with layout/table recovery on extracted text
+- `.doc`: implemented through `catdoc`, with layout/table recovery on extracted
+  text and LibreOffice fallback when extraction quality flags indicate residue
+- `.wp`, `.wp5`, `.wp6`, `.wpd`: implemented through LibreOffice
+  writerperfect/libwpd text extraction, with conversion provenance retained in
+  `document.conversion.json`
 - `.docx`: planned as a higher-fidelity path
-- `.wpd`: planned as a plugin/adapter target, not hard-coded into core assumptions
 
 ## Why separate from Didactopus
 

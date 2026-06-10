@@ -53,6 +53,7 @@ class DocumentBundle(BaseModel):
     tables_path: str
     figures_path: str
     chunks_path: str
+    conversion_path: str = ""
     bundle_path_kind: str = "bundle_root_relative"
     table_count: int = 0
     figure_reference_count: int = 0

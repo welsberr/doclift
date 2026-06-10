@@ -7,6 +7,7 @@ from doclift.legacy_doc import (
     extract_tables,
     extract_title,
     link_related_assets,
+    text_quality_flags,
 )
 
 
@@ -86,3 +87,10 @@ def test_classify_document_kinds() -> None:
     assert classify_document("FINAL EXAM SPRING 1999\nAnswer 3 questions\n", Path("final exam.991.doc")) == "final_exam"
     assert classify_document("MARB 401\nPHYSIOLOGICAL ECOLOGY\nOF\nMARINE MAMMALS\nCLASS NOTES\n", Path("COVER.doc")) == "cover_notes"
     assert classify_document("SPRING 2000\nMARB 401\nPhysiological Ecology of Marine Mammals\n", Path("Syllabus 401.001.doc")) == "syllabus"
+
+
+def test_text_quality_flags_detect_binary_residue_and_bad_title() -> None:
+    raw = "\x01\x02\x03þ7#$\x19\x01.Ó>\nThe Incredible Shrinking Theory\n" + ("normal words " * 20)
+    flags = text_quality_flags(raw, title="þ7#$\x19\x01.Ó>")
+    assert "control_character_residue" in flags
+    assert "suspicious_title" in flags

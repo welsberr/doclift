@@ -15,10 +15,15 @@ from .legacy_doc import (
     normalize_text_preserve_layout,
     render_markdown,
     run_catdoc,
+    run_soffice_doc,
     strip_title,
+    text_quality_flags,
 )
 from .schemas import ConversionReport, DocumentBundle, DocumentChunk
 from .utils import slugify, write_json
+from .wordperfect import WORDPERFECT_EXTENSIONS, is_wordperfect_path, run_soffice_wordperfect
+
+SUPPORTED_EXTENSIONS = {".doc", *WORDPERFECT_EXTENSIONS}
 
 
 def _document_output_dir(out_root: Path, source_path: Path, title: str) -> Path:
@@ -117,10 +122,18 @@ def _locate_chunk_span(paragraph: str, layout_lines: list[str], start_index: int
     return 0, 0, start_index
 
 
-def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
-    raw = run_catdoc(source_path)
+def _convert_extracted_text(
+    source_path: Path,
+    source_root: Path,
+    out_root: Path,
+    raw: str,
+    converter: str,
+    figure_assets: list | None = None,
+    conversion_provenance: dict[str, object] | None = None,
+) -> DocumentBundle:
     cleaned = clean_text(raw)
     title = extract_title(cleaned, source_path.stem)
+    quality_flags = text_quality_flags(raw, cleaned, title)
     document_kind = classify_document(cleaned, source_path)
     body = strip_title(cleaned, title)
     layout_body = normalize_text_preserve_layout(strip_title(raw, title))
@@ -137,9 +150,12 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
     tables_path = doc_out / "document.tables.json"
     figures_path = doc_out / "document.figures.json"
     chunks_path = doc_out / "document.chunks.json"
+    conversion_path = doc_out / "document.conversion.json"
+    extracted_text_path = doc_out / "document.extracted.txt"
     chunks = _build_document_chunks(title, body, layout_body, tables)
 
     markdown_path.write_text(render_markdown(title, body, tables, figure_refs, related_assets), encoding="utf-8")
+    extracted_text_path.write_text(raw.replace("\ufeff", ""), encoding="utf-8")
     write_json(layout_path, layout)
     write_json(
         tables_path,
@@ -160,6 +176,18 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
         },
     )
     write_json(chunks_path, {"chunks": [chunk.model_dump() for chunk in chunks]})
+    write_json(
+        conversion_path,
+        {
+            "converter": converter,
+            "source_path": _relative_to_root(source_path, source_root),
+            "source_path_kind": "source_root_relative",
+            "extracted_text_path": _relative_to_root(extracted_text_path, out_root),
+            "extracted_text_path_kind": "bundle_root_relative",
+            "quality_flags": sorted(set(quality_flags + list((conversion_provenance or {}).get("quality_flags", [])))),
+            "provenance": conversion_provenance or {},
+        },
+    )
 
     return DocumentBundle(
         document_id=slugify(title),
@@ -173,6 +201,7 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
         tables_path=_relative_to_root(tables_path, out_root),
         figures_path=_relative_to_root(figures_path, out_root),
         chunks_path=_relative_to_root(chunks_path, out_root),
+        conversion_path=_relative_to_root(conversion_path, out_root),
         bundle_path_kind="bundle_root_relative",
         table_count=len(tables),
         figure_reference_count=len(figure_refs),
@@ -180,14 +209,72 @@ def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_ass
     )
 
 
+def convert_doc(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
+    raw = run_catdoc(source_path)
+    cleaned = clean_text(raw)
+    title = extract_title(cleaned, source_path.stem)
+    catdoc_flags = text_quality_flags(raw, cleaned, title)
+    converter = "catdoc_doc"
+    provenance: dict[str, object] = {}
+    if {"control_character_residue", "suspicious_title"} & set(catdoc_flags):
+        try:
+            fallback_raw, fallback_provenance = run_soffice_doc(source_path)
+            fallback_cleaned = clean_text(fallback_raw)
+            fallback_title = extract_title(fallback_cleaned, source_path.stem)
+            fallback_flags = text_quality_flags(fallback_raw, fallback_cleaned, fallback_title)
+            if len(fallback_flags) < len(catdoc_flags):
+                raw = fallback_raw
+                converter = "soffice_doc_txt"
+                provenance = fallback_provenance | {
+                    "fallback_from": "catdoc_doc",
+                    "catdoc_quality_flags": catdoc_flags,
+                }
+        except RuntimeError as exc:
+            provenance = {
+                "catdoc_quality_flags": catdoc_flags,
+                "fallback_attempt": "soffice_doc_txt",
+                "fallback_error": str(exc),
+            }
+    return _convert_extracted_text(
+        source_path,
+        source_root,
+        out_root,
+        raw,
+        converter,
+        figure_assets=figure_assets,
+        conversion_provenance=provenance,
+    )
+
+
+def convert_wordperfect(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
+    raw, provenance = run_soffice_wordperfect(source_path)
+    return _convert_extracted_text(
+        source_path,
+        source_root,
+        out_root,
+        raw,
+        "soffice_wordperfect_txt",
+        figure_assets=figure_assets,
+        conversion_provenance=provenance,
+    )
+
+
+def convert_supported_file(source_path: Path, source_root: Path, out_root: Path, figure_assets: list | None = None) -> DocumentBundle:
+    if source_path.suffix.lower() == ".doc":
+        return convert_doc(source_path, source_root, out_root, figure_assets=figure_assets)
+    if is_wordperfect_path(source_path):
+        return convert_wordperfect(source_path, source_root, out_root, figure_assets=figure_assets)
+    raise RuntimeError(f"unsupported source extension for {source_path}")
+
+
 def convert_directory(source_root: Path, out_root: Path, asset_root: Path | None = None) -> ConversionReport:
-    docs = sorted(path for path in source_root.rglob("*") if path.is_file() and path.suffix.lower() == ".doc")
+    docs = sorted(path for path in source_root.rglob("*") if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS)
     figure_assets = collect_figure_assets(asset_root) if asset_root is not None else []
-    bundles = [convert_doc(path, source_root, out_root, figure_assets=figure_assets) for path in docs]
+    bundles = [convert_supported_file(path, source_root, out_root, figure_assets=figure_assets) for path in docs]
     report = ConversionReport(
         source_root=source_root.name,
         source_root_kind="source_label",
-        converter="catdoc_doc",
+        converter="legacy_document_mixed",
         document_count=len(bundles),
         documents=bundles,
         external_figure_asset_count=len(figure_assets),

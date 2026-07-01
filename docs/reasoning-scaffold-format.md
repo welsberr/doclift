@@ -52,6 +52,6 @@ The document-level wrapper should include:
 
 Use the evo-edu Notebook pilot as the first local fixture:
 
-- `/home/netuser/dev/evo-edu.org/notebook/concepts/allele-frequency-change.scaffold.json`
+- `notebook/concepts/allele-frequency-change.scaffold.json`
 
 Future doclift work should be able to validate, transform, or generate this shape without requiring the learner-facing HTML.

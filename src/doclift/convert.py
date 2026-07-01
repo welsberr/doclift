@@ -25,6 +25,29 @@ from .wordperfect import WORDPERFECT_EXTENSIONS, is_wordperfect_path, run_soffic
 
 SUPPORTED_EXTENSIONS = {".doc", *WORDPERFECT_EXTENSIONS}
 
+FALLACY_CUE_PATTERNS = {
+    "ad_hominem": re.compile(r"\bad\s+hominem\b", re.IGNORECASE),
+    "appeal_to_authority": re.compile(r"\bappeal\s+to\s+authority\b|\bargument\s+from\s+authority\b", re.IGNORECASE),
+    "appeal_to_consequences": re.compile(r"\bappeal\s+to\s+consequences\b|\bif\s+.*\bwere\s+true\b.*\b(?:bad|terrible|dangerous|immoral)\b", re.IGNORECASE),
+    "appeal_to_ignorance": re.compile(r"\bappeal\s+to\s+ignorance\b|\bno\s+one\s+has\s+(?:proved|shown|demonstrated)\b", re.IGNORECASE),
+    "argument_from_fallacy": re.compile(r"\bargument\s+from\s+fallacy\b|\bfallacy\s+fallacy\b", re.IGNORECASE),
+    "argument_from_incredulity": re.compile(r"\bargument\s+from\s+incredulity\b|\b(?:cannot|can't)\s+(?:imagine|see|believe)\s+how\b", re.IGNORECASE),
+    "circular": re.compile(r"\bcircular\s+(?:argument|reasoning)\b|\bbegs?\s+the\s+question\b", re.IGNORECASE),
+    "equivocation": re.compile(r"\bequivocat(?:e|es|ed|ing|ion)\b", re.IGNORECASE),
+    "false_analogy": re.compile(r"\bfalse\s+analogy\b", re.IGNORECASE),
+    "false_dilemma": re.compile(r"\bfalse\s+dilemma\b|\beither/or\b", re.IGNORECASE),
+    "hasty_generalization": re.compile(r"\bhasty\s+generalization\b", re.IGNORECASE),
+    "moving_goalposts": re.compile(r"\bmoving\s+the\s+goalposts\b", re.IGNORECASE),
+    "naturalistic": re.compile(r"\bnaturalistic\s+fallacy\b", re.IGNORECASE),
+    "non_sequitur": re.compile(r"\bnon\s+sequitur\b", re.IGNORECASE),
+    "quote_mine": re.compile(r"\bquote\s+mine\b|\bcontextom(?:y|ies)\b", re.IGNORECASE),
+    "red_herring": re.compile(r"\bred\s+herring\b", re.IGNORECASE),
+    "slippery_slope": re.compile(r"\bslippery\s+slope\b", re.IGNORECASE),
+    "special_pleading": re.compile(r"\bspecial\s+pleading\b", re.IGNORECASE),
+    "straw_man": re.compile(r"\bstraw\s+man\b", re.IGNORECASE),
+    "tu_quoque": re.compile(r"\btu\s+quoque\b", re.IGNORECASE),
+}
+
 
 def _document_output_dir(out_root: Path, source_path: Path, title: str) -> Path:
     return out_root / "documents" / f"{slugify(source_path.stem)}-{slugify(title)}"
@@ -41,17 +64,18 @@ def _build_document_chunks(title: str, body: str, layout_body: str, tables: list
     chunks: list[DocumentChunk] = []
 
     for index, paragraph in enumerate(paragraphs, start=1):
-        role = _classify_chunk_role(paragraph)
+        role, analysis_hints, confidence_hint = _classify_chunk(paragraph)
         line_start, line_end, layout_cursor = _locate_chunk_span(paragraph, layout_lines, layout_cursor)
         chunks.append(
             DocumentChunk(
                 chunk_id=f"{slugify(title)}-c{index}",
                 role=role,
+                analysis_hints=analysis_hints,
                 section=title,
                 line_start=line_start,
                 line_end=line_end,
                 text=paragraph,
-                confidence_hint=0.8 if role == "claim" else 0.75,
+                confidence_hint=confidence_hint,
             )
         )
     return chunks
@@ -89,11 +113,53 @@ def _body_for_chunking(body: str, tables: list) -> str:
 
 
 def _classify_chunk_role(paragraph: str) -> str:
+    role, _analysis_hints, _confidence_hint = _classify_chunk(paragraph)
+    return role
+
+
+def _classify_chunk(paragraph: str) -> tuple[str, list[str], float]:
+    text = paragraph.strip()
+    hints: list[str] = []
+
+    for fallacy_name, pattern in FALLACY_CUE_PATTERNS.items():
+        if pattern.search(text):
+            hints.append(f"fallacy_cue:{fallacy_name}")
+
     if paragraph.startswith(("- ", "* ")):
-        return "claim"
-    if re.match(r"^(objective|claim|finding|result|conclusion):", paragraph, re.IGNORECASE):
-        return "claim"
-    return "summary"
+        return "claim", _ordered_hints(["argument_chain_candidate", "needs_source_support", *hints]), 0.78
+    if text.endswith("?"):
+        return "question", _ordered_hints(["question_candidate", *hints]), 0.78
+    if re.match(r"^(objective|claim|finding|result|conclusion|thesis|argument):", text, re.IGNORECASE):
+        return "claim", _ordered_hints(["argument_chain_candidate", "needs_source_support", *hints]), 0.82
+    if re.match(r"^(because|since|given that|assuming that|if)\b", text, re.IGNORECASE):
+        return "premise", _ordered_hints(["argument_chain_candidate", "premise_candidate", *hints]), 0.76
+    if re.match(
+        r"^(?:the\s+)?(?:evidence|data|results?|observations?|experiments?|studies?)\b|"
+        r"\b(?:shows?|demonstrates?|indicates?|supports?|measured|observed|table|figure|fig\.)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return "evidence", _ordered_hints(["evidence_candidate", "needs_citation_check", *hints]), 0.76
+    if re.match(r"^(however|although|while|critics?|objectors?|objection|counterargument)\b", text, re.IGNORECASE):
+        return "objection", _ordered_hints(["counterargument_candidate", "argument_chain_candidate", *hints]), 0.76
+    if re.match(
+        r"^(flaw|fallacy|critique|problem|misleading|unsupported)\b|"
+        r"\b(?:fallacy|flawed|misleading|unsupported|does not follow|fails to|quote\s+mine)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return "critique", _ordered_hints(["critique_candidate", "argument_chain_candidate", *hints]), 0.76
+    if hints:
+        return "critique", _ordered_hints(["critique_candidate", "argument_chain_candidate", *hints]), 0.72
+    if re.match(r"^(definition|defined as)\b|\b(?:is defined as|refers to|means)\b", text, re.IGNORECASE):
+        return "definition", _ordered_hints(["definition_candidate", *hints]), 0.74
+    if re.match(r"^(method|methods|procedure|materials)\b", text, re.IGNORECASE):
+        return "method", _ordered_hints(["method_candidate", *hints]), 0.74
+    return "summary", _ordered_hints(hints), 0.72 if hints else 0.75
+
+
+def _ordered_hints(hints: list[str]) -> list[str]:
+    return list(dict.fromkeys(hints))
 
 
 def _locate_chunk_span(paragraph: str, layout_lines: list[str], start_index: int) -> tuple[int, int, int]:

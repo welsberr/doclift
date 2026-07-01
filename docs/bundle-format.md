@@ -35,6 +35,14 @@ Each normalized document lives under `documents/<document-id>/`.
 - explicit figure references from text
 - related external assets when available
 
+`document.chunks.json`
+- normalized paragraphs with source line anchors
+- first-pass `role` values such as `summary`, `claim`, `premise`, `evidence`,
+  `objection`, `critique`, `definition`, `method`, and `question`
+- `analysis_hints` for downstream review queues; these are machine cues, not
+  reviewed findings
+- `confidence_hint` for extraction/classification confidence
+
 ## Stability
 
 The schema should be stable enough for downstream adapters.

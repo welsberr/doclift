@@ -70,8 +70,35 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     assert len(chunks_payload["chunks"]) == 1
     assert chunks_payload["chunks"][0]["chunk_id"] == "lecture-1-example-legacy-document-c1"
     assert chunks_payload["chunks"][0]["role"] == "summary"
+    assert chunks_payload["chunks"][0]["analysis_hints"] == []
     assert chunks_payload["chunks"][0]["line_start"] >= 1
     assert chunks_payload["chunks"][0]["text"] == "See Fig. 5.1 and Table 1."
+
+
+def test_classify_chunk_records_argument_analysis_hints() -> None:
+    premise_role, premise_hints, _premise_confidence = convert_module._classify_chunk(
+        "Because the fossil record contains transitional sequences, this objection is incomplete."
+    )
+    evidence_role, evidence_hints, _evidence_confidence = convert_module._classify_chunk(
+        "The results show a measurable fit to the predicted distribution."
+    )
+    critique_role, critique_hints, _critique_confidence = convert_module._classify_chunk(
+        "This is a straw man critique because the original claim is misstated."
+    )
+    incredulity_role, incredulity_hints, _incredulity_confidence = convert_module._classify_chunk(
+        "I cannot imagine how this structure evolved by natural selection."
+    )
+
+    assert premise_role == "premise"
+    assert "premise_candidate" in premise_hints
+    assert "argument_chain_candidate" in premise_hints
+    assert evidence_role == "evidence"
+    assert "needs_citation_check" in evidence_hints
+    assert critique_role == "critique"
+    assert "critique_candidate" in critique_hints
+    assert "fallacy_cue:straw_man" in critique_hints
+    assert incredulity_role == "critique"
+    assert "fallacy_cue:argument_from_incredulity" in incredulity_hints
 
 
 def test_emit_okf_bundle_writes_browsable_markdown_companion(tmp_path: Path, monkeypatch) -> None:

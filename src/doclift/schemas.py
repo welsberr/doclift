@@ -34,6 +34,7 @@ class FigureAsset(BaseModel):
 class DocumentChunk(BaseModel):
     chunk_id: str
     role: str = "summary"
+    analysis_hints: list[str] = Field(default_factory=list)
     section: str = ""
     line_start: int = 0
     line_end: int = 0

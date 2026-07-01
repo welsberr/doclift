@@ -73,6 +73,8 @@ Convert a directory tree and inventory external figure assets:
 doclift convert-dir /path/to/source-tree /tmp/doclift-bundle --asset-root /path/to/source-tree
 ```
 
+Add `--emit-okf` when you also want an OKF-style Markdown companion bundle under `out/okf`; see `docs/okf-export.md`.
+
 ## Downstream Workflow
 
 `doclift` is meant to hand off a normalized bundle to downstream systems rather

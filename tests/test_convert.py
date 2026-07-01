@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from doclift import convert as convert_module
+from doclift.okf_export import emit_okf_bundle
 
 
 def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path, monkeypatch) -> None:
@@ -71,6 +72,27 @@ def test_convert_directory_writes_manifest_and_conversion_report(tmp_path: Path,
     assert chunks_payload["chunks"][0]["role"] == "summary"
     assert chunks_payload["chunks"][0]["line_start"] >= 1
     assert chunks_payload["chunks"][0]["text"] == "See Fig. 5.1 and Table 1."
+
+
+def test_emit_okf_bundle_writes_browsable_markdown_companion(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "src"
+    out_root = tmp_path / "out"
+    source_root.mkdir()
+    (source_root / "sample.doc").write_text("stub", encoding="utf-8")
+    sample_text = "Lecture 1. Example legacy document\n\nA grounded source paragraph."
+    monkeypatch.setattr(convert_module, "run_catdoc", lambda path: sample_text)
+
+    report = convert_module.convert_directory(source_root, out_root)
+    payload = emit_okf_bundle(report, out_root)
+
+    assert payload["document_count"] == 1
+    manifest = json.loads((out_root / "okf" / "manifest.json").read_text(encoding="utf-8"))
+    index = (out_root / "okf" / "index.md").read_text(encoding="utf-8")
+    document_page = (out_root / "okf" / "documents" / "lecture-1-example-legacy-document.md").read_text(encoding="utf-8")
+    assert manifest["bundle_kind"] == "doclift_okf_bundle"
+    assert "[Lecture 1. Example legacy document](documents/lecture-1-example-legacy-document.md)" in index
+    assert 'okf_type: "doclift.document"' in document_page
+    assert "A grounded source paragraph." in document_page
 
 
 def test_convert_directory_handles_wordperfect_with_conversion_provenance(tmp_path: Path, monkeypatch) -> None:

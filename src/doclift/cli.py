@@ -7,6 +7,7 @@ from pathlib import Path
 from .convert import convert_directory, convert_supported_file
 from .inspect import inspect_path
 from .legacy_doc import collect_figure_assets
+from .okf_export import emit_okf_bundle
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     convert_dir_parser.add_argument("source_root")
     convert_dir_parser.add_argument("out")
     convert_dir_parser.add_argument("--asset-root", default=None)
+    convert_dir_parser.add_argument("--emit-okf", action="store_true", help="Also write an OKF-style Markdown bundle under out/okf")
     return parser
 
 
@@ -43,7 +45,10 @@ def main() -> None:
     if args.command == "convert-dir":
         asset_root = Path(args.asset_root) if args.asset_root else None
         report = convert_directory(Path(args.source_root), Path(args.out), asset_root=asset_root)
-        print(json.dumps(report.model_dump(), indent=2))
+        payload = report.model_dump()
+        if args.emit_okf:
+            payload["okf_bundle"] = emit_okf_bundle(report, Path(args.out))
+        print(json.dumps(payload, indent=2))
         return
 
 
